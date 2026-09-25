@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Merkkiajo 2 🚗</title>
+<style>
+html,body{margin:0;background:#20242a;color:#fff;font-family:Arial,sans-serif;text-align:center}
+h1{font-size:24px;margin:8px 0 2px}.info{font-size:16px;margin:3px}
+canvas{display:block;margin:6px auto;width:96vw;max-width:700px;height:auto;border:3px solid #fff;border-radius:10px;background:#69ad59}
+button{font-size:24px;min-width:64px;min-height:52px;margin:3px;border:0;border-radius:11px;touch-action:none}
+#start{background:#ffd447;font-size:19px;padding:9px 22px}
+</style>
+</head>
+<body>
+<h1>🚗 Merkkiajo – Väistä!</h1>
+<div class="info">⭐ Pisteet: <b id="score">0</b> &nbsp; 📏 Matka: <b id="dist">0</b> m</div>
+<div id="msg">Paina ▶️ ALOITA</div>
+<canvas id="game" width="700" height="500"></canvas>
+<button id="start">▶️ ALOITA</button><br>
+<button data-k="L">⬅️</button><button data-k="U">⬆️</button>
+<button data-k="D">⬇️</button><button data-k="R">➡️</button>
+<div style="font-size:13px">Väistä esteitä! Osa esteistä alkaa liikkua, kun etenet.</div>
+
+<script>
+const c=document.getElementById("game"),ctx=c.getContext("2d");
+const K={L:false,R:false,U:false,D:false};
+let playing=false,score=0,distance=0,last=0,spawn=0;
+const car={x:350,y:405,w:44,h:68,speed:260};
+let objects=[];
+
+function startGame(){
+ playing=true;score=0;distance=0;spawn=0;objects=[];
+ car.x=350;car.y=405;
+ document.getElementById("score").textContent=0;
+ document.getElementById("dist").textContent=0;
+ document.getElementById("msg").textContent="Aja ja väistä esteitä!";
+}
+document.getElementById("start").onclick=startGame;
+
+function setKey(k,v){K[k]=v}
+addEventListener("keydown",e=>{
+ const m={ArrowLeft:"L",ArrowRight:"R",ArrowUp:"U",ArrowDown:"D"}[e.key];
+ if(m){K[m]=true;e.preventDefault()}
+});
+addEventListener("keyup",e=>{
+ const m={ArrowLeft:"L",ArrowRight:"R",ArrowUp:"U",ArrowDown:"D"}[e.key];
+ if(m)K[m]=false;
+});
+document.querySelectorAll("[data-k]").forEach(b=>{
+ const k=b.dataset.k;
+ b.addEventListener("pointerdown",e=>{e.preventDefault();setKey(k,true)});
+ b.addEventListener("pointerup",e=>{e.preventDefault();setKey(k,false)});
+ b.addEventListener("pointercancel",()=>setKey(k,false));
+ b.addEventListener("pointerleave",()=>setKey(k,false));
+});
+
+function road(){
+ ctx.fillStyle="#69ad59";ctx.fillRect(0,0,700,500);
+ ctx.fillStyle="#555";ctx.fillRect(105,0,490,500);
+ ctx.fillStyle="#777";ctx.fillRect(115,0,470,500);
+ ctx.fillStyle="#f2d23c";ctx.fillRect(105,0,6,500);ctx.fillRect(589,0,6,500);
+ ctx.fillStyle="#fff";
+ let off=(distance*3)%65;
+ for(let y=-70+off;y<500;y+=65)ctx.fillRect(347,y,6,34);
+ // roadside trees moving with the road
+ for(let y=-40+((distance*1.7)%110);y<500;y+=110){
+   tree(60,y); tree(640,y+45);
+ }
+}
+
+function tree(x,y){
+ ctx.fillStyle="#70452b";ctx.fillRect(x-4,y+20,8,22);
+ ctx.fillStyle="#2d7535";ctx.beginPath();ctx.arc(x,y+15,20,0,7);ctx.fill();
+ ctx.beginPath();ctx.arc(x-12,y+25,15,0,7);ctx.fill();
+ ctx.beginPath();ctx.arc(x+12,y+25,15,0,7);ctx.fill();
+}
+
+function drawCar(){
+ ctx.save();ctx.translate(car.x,car.y);
+ ctx.fillStyle="#111";
+ ctx.fillRect(-27,-24,8,19);ctx.fillRect(19,-24,8,19);
+ ctx.fillRect(-27,7,8,19);ctx.fillRect(19,7,8,19);
+ ctx.fillStyle="#e53935";ctx.strokeStyle="#8b1111";ctx.lineWidth=3;
+ ctx.beginPath();ctx.roundRect(-22,-34,44,68,9);ctx.fill();ctx.stroke();
+ ctx.fillStyle="#bdefff";
+ ctx.fillRect(-15,-25,30,19);ctx.fillRect(-15,5,30,18);
+ ctx.fillStyle="#fff3a0";ctx.fillRect(-15,-32,8,4);ctx.fillRect(7,-32,8,4);
+ ctx.restore();
+}
+
+function addObject(){
+ const lane=Math.floor(Math.random()*3);
+ const lanes=[220,350,480];
+ const type=Math.random();
+ let o;
+ if(type<.35)o={type:"rock",x:lanes[lane],y:-40,w:42,h:32,v:1,phase:Math.random()*7};
+ else if(type<.65)o={type:"cone",x:lanes[lane],y:-40,w:30,h:35,v:1,phase:0};
+ else if(type<.82)o={type:"car",x:lanes[lane],y:-60,w:48,h:70,v:1,phase:Math.random()*7};
+ else o={type:"barrier",x:lanes[lane],y:-35,w:90,h:25,v:1,phase:0};
+ objects.push(o);
+}
+
+function drawObject(o){
+ ctx.save();
+ if(o.type==="rock"){
+   ctx.fillStyle="#777";ctx.beginPath();ctx.arc(o.x,o.y,20,0,7);ctx.fill();
+   ctx.fillStyle="#aaa";ctx.beginPath();ctx.arc(o.x-7,o.y-7,6,0,7);ctx.fill();
+ }else if(o.type==="cone"){
+   ctx.fillStyle="#f58220";ctx.beginPath();ctx.moveTo(o.x,o.y-20);ctx.lineTo(o.x-16,o.y+18);ctx.lineTo(o.x+16,o.y+18);ctx.closePath();ctx.fill();
+   ctx.fillStyle="#fff";ctx.fillRect(o.x-11,o.y+3,22,5);
+ }else if(o.type==="car"){
+   ctx.fillStyle="#2867c7";ctx.fillRect(o.x-24,o.y-35,48,70);
+   ctx.fillStyle="#bdefff";ctx.fillRect(o.x-16,o.y-24,32,18);ctx.fillRect(o.x-16,o.y+5,32,18);
+   ctx.fillStyle="#111";ctx.fillRect(o.x-28,o.y-22,7,17);ctx.fillRect(o.x+21,o.y-22,7,17);
+   ctx.fillRect(o.x-28,o.y+7,7,17);ctx.fillRect(o.x+21,o.y+7,7,17);
+ }else{
+   ctx.fillStyle="#e53935";ctx.fillRect(o.x-45,o.y-12,90,24);
+   ctx.fillStyle="#fff";ctx.fillRect(o.x-30,o.y-7,18,14);ctx.fillRect(o.x+12,o.y-7,18,14);
+ }
+ ctx.restore();
+}
+
+function hit(a,b){
+ return Math.abs(a.x-b.x)<(a.w+b.w)/2-5 &&
+        Math.abs(a.y-b.y)<(a.h+b.h)/2-5;
+}
+
+function update(dt){
+ if(!playing)return;
+
+ if(K.L)car.x-=car.speed*dt;
+ if(K.R)car.x+=car.speed*dt;
+ if(K.U)car.y-=car.speed*dt;
+ if(K.D)car.y+=car.speed*dt;
+ car.x=Math.max(140,Math.min(560,car.x));
+ car.y=Math.max(280,Math.min(445,car.y));
+
+ distance+=dt*18;
+ document.getElementById("dist").textContent=Math.floor(distance);
+
+ spawn-=dt;
+ const difficulty=Math.min(1.5,distance/500);
+ if(spawn<=0){
+   addObject();
+   spawn=Math.max(.55,1.25-difficulty*.35)+Math.random()*.5;
+ }
+
+ for(const o of objects){
+   o.y += (180+distance*.5)*dt;
+   // Later in the game, blue cars and some rocks move sideways.
+   if(distance>80 && (o.type==="car"||o.type==="rock")){
+     o.x += Math.sin(performance.now()/500+o.phase)*55*dt;
+     o.x=Math.max(150,Math.min(550,o.x));
+   }
+   if(hit(car,o)){
+     playing=false;
+     document.getElementById("msg").textContent="💥 Osuit esteeseen! Paina ALOITA uudelleen.";
+     break;
+   }
+ }
+ objects=objects.filter(o=>o.y<570);
+ score=Math.floor(distance/10);
+ document.getElementById("score").textContent=score;
+ if(distance>180)document.getElementById("msg").textContent="⚠️ Nyt esteet liikkuvat!";
+}
+
+function draw(){
+ road();
+ for(const o of objects)drawObject(o);
+ drawCar();
+ if(!playing){
+   ctx.fillStyle="rgba(0,0,0,.30)";ctx.fillRect(0,0,700,450);
+   ctx.fillStyle="#fff";ctx.font="bold 30px Arial";ctx.textAlign="center";
+   ctx.fillText("🚗 Merkkiajo",350,220);
+   ctx.font="19px Arial";ctx.fillText("Paina ALOITA",350,255);
+ }
+}
+
+function loop(t){
+ const dt=Math.min(.04,(t-last)/1000||0);last=t;
+ update(dt);draw();requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
